@@ -1,0 +1,210 @@
+---
+title: "Statistical inference with the GSS data"
+output: 
+  html_document: 
+    fig_height: 4
+    highlight: pygments
+    theme: spacelab
+---
+
+## Setup
+
+### Load packages
+
+```{r load-packages, message = FALSE}
+library(ggplot2)
+library(dplyr)
+library(statsr)
+library(tidyr)
+```
+
+### Load data
+
+As instructed in this assignment, we are going to work with the data extract obtained from *General Social Survey* between the year 1972 and 2012. As mentioned in the codebook attached, the extract has been modified slightly in terms of elimination of the missing values and conversion of the variable type to factor (wherever applicable) for our ease of analysis. Hence, any findings mentioned in this document must be used with caution, as the sole purpose of it is only to provide a hands-on exposure of the acquired statistical inference skills.
+
+```{r load-data}
+load("gss.Rdata")
+```
+
+* * *
+
+## Part 1: Data
+
+Before begining to formulate and describe any statistical study and analysis, it is important for us to comment on `generalizability` and `causation` of any findings obtained further.
+
+To determine *generalizability*, we would like to consider the data collection strategy of the given survey. As mentioned in the FAQ page[^1], the group of households considered for the study was selected randomly from all the households across the nation, that means every household of the entire nation was equally probable to be selected. If we look at the dataset we can observe a considerable amount of non-response around a few survey questions, which may indicate an increased vulnerability towards non-response bias. But as long as we are limiling ourselves in using those variables which are comparatively well responded, we can safely say that **as the data collection methodology is completely unbiased and random, any finding from this data can be generalized for the entire population across the nation.**  
+
+To comment on *causation*, the first and foremost thing is, the data is purely *observational*, collected by means of random sampling from the entire US population. So any findings from this study may only determine potential association between two or more variables. **We must refrain ourselves from drawing any causal conclusion based on the findings, as all the findings will be affected by one or more lurking variables.**
+
+* * *
+
+## Part 2: Research question
+
+### Section 1:  
+
+In this article we would like to determine whether in US, employment opportunities are racially biased. To be very specific, we will work with two variables namely `jobfind` and `race`. If it happens to be the case that all the jobs are of equal oopotunity, we should expect nearly equal proportion of different levels like `VERY EASY`, `SOMEWHAT EASY`, `NOT EASY` across all the `races`s.
+
+The reason behind choosing this reaserch question is, we know that since pre-historic era racial bias has been one of the most critical problem that our soceity has witnessed. Now as we are continuing with a technological revolution, I am really interested to evaluate how is the statistics of this racial bias when it comes to finding new job opportunity
+
+**A kind note to the evaluator - please do not consider this topic to be controversial as in no way here I am supporting racism. I do strongly believe in racial equality.**
+
+* * *
+
+## Part 3: Exploratory data analysis  
+
+In this section, let us consider having a look at different sample statistics and graphical visualizations to analyse whether there is any possible association between the required variables.
+
+We would like to first narrow down our focus into three variables namely, `jobfind`, `race` and `year`
+
+```{r}
+gss_m <- gss %>% select(jobfind, race, year)
+head(gss_m,6)
+```
+
+Let us have a look at their variable types
+```{r}
+str(gss_m$jobfind)
+str(gss_m$race)
+str(gss_m$year)
+```
+
+Now that this is accomplished, we would like to modify each observation having the value `NA` to `Not Available`. But while doing that we have to keep their variable type as `factor`, as like the original.
+
+```{r}
+gss_m <- gss_m %>% 
+  mutate(jobfind = ifelse(is.na(jobfind),"Not Available",levels(jobfind)[jobfind])) %>%
+  mutate(race = ifelse(is.na(race),"Not Available",levels(race)[race]))
+
+head(gss_m,6)
+
+```
+
+Here, to analyze the association between `findjob` and `race` let us first filter out the responses of `2012`. The reason being if I would have considered the entire dataset all at a time, irrespective of `year`, there would have been a possibility that the same household is included in the sample more than once, as it was randomly chosen on more than one different years of survey.  
+
+```{r}
+gss_m_2012 <- gss_m %>% 
+  filter(year == 2012)
+
+head(gss_m,6)
+```
+
+Now this is the sample data we will consider for making inference to the first subsection of the research question.
+
+Now we would want to have our contingency table for this sample where the *exploratory variable* is `race` and *response variable* is `findjob`.
+```{r}
+#'ct' stands for contingency table
+ctlonger2012_count <- gss_m_2012 %>% group_by(race,jobfind) %>% summarise(datacount=n())
+ctwider2012_count <- pivot_wider(ctlonger2012_count,names_from=race,values_from=datacount)
+ctwider2012_count <- ctwider2012_count %>% mutate(total=White + Black + Other)
+ctwider2012_count
+```
+
+Now this table is displaying real count of data for each combination of `race` and `findjob`. But we are more interested in having percentage value for each category of `findjob`, considering population for every `race` to be cent percent, so that we can compare and determine whether actually racial bias is present.
+
+So now we will calculate column-proportion to get those percentage value.
+
+```{r}
+ctwider2012_prop <- ctwider2012_count %>%
+  mutate(Black = Black/sum(Black), White = White/sum(White), Other = Other/sum(Other), prop = total/sum(total)) %>% 
+  select(-total)
+
+ctwider2012_prop
+```
+
+from the above table the following two observations are noteworthy.  
+
+* In all of the three races, we could see a high percentage of non-response.  
+
+* For the white population, we can observe a comparatively higher proportion of people belongs to `VERY EASY` jobfind category.  
+
+* For `NOT EASY` category, this proprtion is more in case of `BLACK` and `OTHER` as compared to `WHITE`.  
+
+Let us create a plot to visualize better. For that we need the above contingency table in pivot-longer format, so that we can make use of `fill` attribute of `geom_col`.
+```{r}
+ctlonger2012_prop <- ctlonger2012_count %>%
+  mutate(prop=datacount/sum(ctlonger2012_count$datacount[ctlonger2012_count$race == race])) %>%
+  select(-datacount)
+```
+
+This is how it looks like.  
+```{r}
+ctlonger2012_prop
+```
+
+Now here comes the bar-chart representing the contingency table.  
+```{r}
+ggplot(ctlonger2012_prop,aes(x=race,y=prop,fill=jobfind)) + geom_col(position="dodge")
+```
+
+We can also make use of segmented bar chart for this one. Here it is how.  
+```{r}
+ggplot(ctlonger2012_prop,aes(x=race,y=prop,fill=jobfind)) + geom_col(position="fill")
+```
+
+Here we can clearly observe all the above mentioned points. But looking at this graphical representation or the contingency table we have created above, we can't conclude whether the observed difference in proportions across the various `race`s are completely due to chance or there is real source of bias.
+
+We need to rely on hypotheses testing for such inference.  
+
+* * *
+
+## Part 4: Inference
+
+Before diving into inference let us have a quick look at the contingency table we created.
+
+```{r}
+ctwider2012_prop
+```
+
+We can see there is difference among proportion of population from each `race` that belongs to a particular `jobfind` category.  
+
+We are interested in finding whether the difference provides convincing evidence that there is a racial bias, or the difference observed is just due to chance. In that case it would imply that `jobfind` does not have any dependency on `race` or ease of finding a new job is independent of race.
+
+**As both the variables `jobfind` and `race` are categorical, we will use chi-square test of independence.**
+
+**Here we can't determine a confidence interval as both the explanatory and response variables are of type `categorical`.**
+
+### Step 1 - Define Hypotheses:  
+
+Our null hypothesis is, *the variables `jobfind` and `race` are independent of each other and any difference observed in proportion is due to chance*. On the other hand the alternative hypothesis is, *the variables `jobfind` and `race` are indeed dependent on each other. The different is proportion observed in the contingency table can not be attributed to chance.*  
+
+Notationally,  
+**H~0~: The variables `jobfind` and `race` are independent.**  
+**H~A~: There is a dependency between `jobfind` and `race`.**
+
+### Step 2 - Check condition:  
+In order to be able to use chi-square test of independence, there are two conditions need to be checked, which are as follows
+
+**Condition of Independence: As the households to be surveyed had been chosen randomly and from every household only one person was interviewed, we can safely conclude that every observation that contributes to the count is independent of each other.**
+
+**Sample Size/Distribution: From the below table that was calculated at the time of data analysis, we can already see that each and every cell value exceeds 5.**
+```{r}
+ctwider2012_count
+```
+
+So, we can safely make use of theoritical chi-square distribution to calculate our p-value.
+
+### Step 3 - Calculation of p-value:   
+It is now time to calculate p-value. We will make use of `inference()` function from the `statsr` package.
+
+```{r}
+inference(y=jobfind,x=race,data=gss_m_2012,type="ht",statistic="proportion",null=0,alternative="greater",method="theoretical",sig_level = 0.05)
+```
+
+The calculated p-value is much higher than our significance level `0.05`. The same is also evident by means of the graph of the chi-sq distribution shown above. We can see a significant amount of area to the right of `chi_sq = 7.6162`
+
+### Step 4 - Interpretation of result: 
+As the p-value is much higher than significance level `0.05`, we will fail to reject H~0~. That means the two variable `race` and `jobfind` are indeed independent of each other. 
+
+This further implies that the difference observed in `jobfind` proportions can be attributed to chance.
+
+## Limitations of the study: 
+
+Though the result of the inference from the available dataset looks somewhat convincing, it is having the following limitations.  
+
+1. The dependency between `race` and `jobfind` only holds good for the year `2012`. It may not necessarily be the case for other survey years. Hence, the conclusion is not meant to be generalized for the entire survey period.  
+
+2. The dataset used in the study is having a high non-response count with respect to the variable `jobfind`. This can induce significant amount of non-response bias which further may hamper generalizability of this study.  
+
+3. This study is completely observational. In fact there are more than one `lurking variables` involved. One such is the demand of a particular type of job that a potential respondent is refering to. So the outcome of this study can not be used to make causal conclusions.  
+
+[^1]: Please visit <http://gss.norc.org/Pages/Faq.aspx>[link](http://gss.norc.org/Pages/Faq.aspx)
